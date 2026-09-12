@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#05070D">
+  <meta name="description" content="Project Polaris — Building ideas into reality.">
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2305070D'/%3E%3Cpath d='M32 10 L37 25 L52.9 25 L40.1 34.6 L44.9 49.8 L32 40.5 L19.1 49.8 L23.9 34.6 L11.1 25 L27 25 Z' fill='%23C9DCFF'/%3E%3C/svg%3E">
+
+  <title>Project Polaris</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <canvas id="spaceCanvas" aria-hidden="true"></canvas>
+
+  <header class="header" id="header">
+    <div class="brand">
+      <h1>POLARIS</h1>
+      <p>North Star Project</p>
+    </div>
+
+    <nav aria-label="Main navigation">
+      <ul class="nav-links">
+        <li><a href="#about">About</a></li>
+        <li><a href="#north-star">North Star</a></li>
+        <li><a href="#journey">Journey</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="hero" id="hero">
+    <div class="hero-content">
+      <button id="exploreBtn" type="button">
+        <span class="dot" aria-hidden="true"></span>
+        <span>Explore</span>
+      </button>
+      <p class="slogan">Building ideas into reality.</p>
+    </div>
+  </main>
+
+  <div class="hud" aria-hidden="true">
+    <span>POLARIS · α UMi</span>
+    <span>AZIMUTH 000.00°</span>
+  </div>
+
+  <section class="orbital-timeline" id="orbitalTimeline" aria-hidden="true">
+    <div class="orbital-scroll-space">
+      <div class="orbital-sticky">
+
+        <!-- 北极星：远处的导航锚点 -->
+        <div class="polaris-anchor" aria-hidden="true">
+          <div class="polaris-halo"></div>
+          <div class="polaris-core"></div>
+        </div>
+
+        <!-- 左侧弧形导航脊柱：整个 3D 装置的骨架 -->
+        <div class="nav-arc-layer" id="navArcLayer">
+          <div class="arc-camera" id="arcCamera">
+            <svg
+              class="nav-arc-svg"
+              id="navArcSvg"
+              viewBox="0 0 120 1400"
+              preserveAspectRatio="xMidYMid meet"
+              aria-hidden="true"
+            >
+              <defs>
+                <radialGradient id="satGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.85" />
+                  <stop offset="14%"  stop-color="#E0ECFF" stop-opacity="0.42" />
+                  <stop offset="42%"  stop-color="#7DA8FF" stop-opacity="0.10" />
+                  <stop offset="100%" stop-color="#7DA8FF" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+
+              <!-- 底弧（发丝级参考线） -->
+              <path
+                class="nav-arc-base"
+                id="navArcBase"
+                d="M 20 -40 C 134 340, 134 1060, 20 1440"
+                fill="none"
+              />
+
+              <!-- 弧线脊柱：动态分段 -->
+              <g class="nav-arc-spine-group" id="navArcSpineGroup"></g>
+
+              <!-- 5 个航点圆环 -->
+              <g class="nav-node" data-node="0">
+                <circle class="nav-node-ring" r="10" />
+                <circle class="nav-node-core" r="2" />
+              </g>
+              <g class="nav-node" data-node="1">
+                <circle class="nav-node-ring" r="10" />
+                <circle class="nav-node-core" r="2" />
+              </g>
+              <g class="nav-node" data-node="2">
+                <circle class="nav-node-ring" r="10" />
+                <circle class="nav-node-core" r="2" />
+              </g>
+              <g class="nav-node" data-node="3">
+                <circle class="nav-node-ring" r="10" />
+                <circle class="nav-node-core" r="2" />
+              </g>
+              <g class="nav-node" data-node="4">
+                <circle class="nav-node-ring" r="10" />
+                <circle class="nav-node-core" r="2" />
+              </g>
+
+              <!-- 卫星 -->
+              <g class="satellite" id="satellite">
+                <circle class="sat-glow" r="34" fill="url(#satGlow)" />
+                <circle class="sat-core" r="2.6" fill="#FFFFFF" />
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 位置读数（HUD） -->
+        <div class="arc-hud" aria-hidden="true">
+          <span class="arc-hud-label">ARC-NAV</span>
+          <span class="arc-hud-value" id="arcHudValue">01 / 05</span>
+        </div>
+
+        <!-- 右侧内容区 -->
+        <div class="nav-content">
+          <article class="nav-panel" data-node="0">
+            <span class="panel-label">01 / 05</span>
+            <h2 class="panel-title">Launch</h2>
+            <p class="panel-line">The moment of ignition.</p>
+            <p class="panel-sub">启航</p>
+          </article>
+
+          <article class="nav-panel" data-node="1">
+            <span class="panel-label">02 / 05</span>
+            <h2 class="panel-title">Course</h2>
+            <p class="panel-line">A direction chosen deliberately.</p>
+            <p class="panel-sub">定航</p>
+          </article>
+
+          <article class="nav-panel" data-node="2">
+            <span class="panel-label">03 / 05</span>
+            <h2 class="panel-title">Orbit</h2>
+            <p class="panel-line">Sustained motion around a center.</p>
+            <p class="panel-sub">入轨</p>
+          </article>
+
+          <article class="nav-panel" data-node="3">
+            <span class="panel-label">04 / 05</span>
+            <h2 class="panel-title">Ascent</h2>
+            <p class="panel-line">The slow climb toward altitude.</p>
+            <p class="panel-sub">上升</p>
+          </article>
+
+          <article class="nav-panel" data-node="4">
+            <span class="panel-label">05 / 05</span>
+            <h2 class="panel-title">Polaris</h2>
+            <p class="panel-line">The fixed point everything returns to.</p>
+            <p class="panel-sub">北极星</p>
+          </article>
+        </div>
+
+        <button class="back-btn" id="backBtn" type="button">
+          <span aria-hidden="true">←</span>
+          <span>Exit Orbit</span>
+        </button>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="transition-overlay" id="transitionOverlay" aria-hidden="true"></div>
+
+  <script type="module" src="script.js"></script>
+
+</body>
+</html>

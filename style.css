@@ -1,0 +1,1040 @@
+:root {
+  --bg: #05070D;
+  --text: #F5F7FA;
+  --muted: #B8C2D6;
+  --faint: #7E889E;
+  --accent: #7DA8FF;
+  --accent-rgb: 125, 168, 255;
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+          "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-slow: cubic-bezier(0.16, 0.84, 0.22, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --glass-bg: rgba(5, 7, 13, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.05);
+
+  --pad-x: clamp(28px, 5vw, 80px);
+  --pad-y: clamp(24px, 4vh, 44px);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- 暗角 ---------- */
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+
+  background: radial-gradient(
+    ellipse 90% 90% at 50% 50%,
+    transparent 44%,
+    rgba(0, 0, 0, 0.28) 74%,
+    rgba(0, 0, 0, 0.65) 100%
+  );
+
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ---------- Canvas ---------- */
+
+#spaceCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.30; box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4); }
+  50%      { opacity: 0.80; box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.8); }
+}
+
+/* ---------- Header ---------- */
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 40px;
+
+  z-index: 10;
+
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-bottom: 1px solid var(--glass-border);
+
+  padding:
+    calc(var(--pad-y) + env(safe-area-inset-top))
+    calc(var(--pad-x) + env(safe-area-inset-right))
+    var(--pad-y)
+    calc(var(--pad-x) + env(safe-area-inset-left));
+
+  opacity: 0;
+  animation: fadeDown 1.4s var(--ease) 0.3s forwards;
+  will-change: opacity, transform;
+}
+
+.brand h1 {
+  font-size: clamp(16px, 1.6vw, 20px);
+  font-weight: 400;
+  letter-spacing: 0.46em;
+  text-indent: 0.46em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.brand p {
+  margin-top: 14px;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  text-indent: 0.16em;
+}
+
+.nav-links {
+  display: flex;
+  gap: clamp(28px, 3.6vw, 56px);
+  list-style: none;
+}
+
+.nav-links a {
+  position: relative;
+  display: inline-block;
+  padding: 8px 0;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  color: rgba(224, 232, 245, 0.88);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.4s var(--ease);
+}
+
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  transform: scaleX(0);
+  transform-origin: right center;
+  transition: transform 0.5s var(--ease);
+}
+
+.nav-links a:hover,
+.nav-links a:focus-visible {
+  color: #FFFFFF;
+}
+
+.nav-links a:hover::after,
+.nav-links a:focus-visible::after {
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+.nav-links a:focus-visible {
+  outline: none;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.hero-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(clamp(130px, 30vh, 300px));
+  pointer-events: auto;
+}
+
+/* ---------- Button ---------- */
+
+#exploreBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+
+  padding: 18px 50px 18px 42px;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  text-indent: 0.38em;
+
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(16px);
+  will-change: opacity, transform;
+
+  transition:
+    opacity 1.2s var(--ease),
+    transform 1.2s var(--ease),
+    border-color 0.5s ease,
+    background-color 0.5s ease,
+    box-shadow 0.6s ease;
+}
+
+#exploreBtn .dot {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.8);
+  opacity: 0.4;
+  animation: pulse 3.6s ease-in-out infinite;
+}
+
+#exploreBtn.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#exploreBtn:focus-visible {
+  outline: none;
+  border-color: rgba(var(--accent-rgb), 0.6);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12);
+}
+
+#exploreBtn.show:active {
+  transform: translateY(0) scale(0.985);
+  transition-duration: 0.12s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #exploreBtn.show:hover {
+    transform: translateY(-2px);
+    border-color: rgba(var(--accent-rgb), 0.4);
+    background: rgba(var(--accent-rgb), 0.05);
+    box-shadow:
+      0 0 0 1px rgba(var(--accent-rgb), 0.05),
+      0 12px 48px -12px rgba(var(--accent-rgb), 0.45);
+  }
+}
+
+/* ---------- Slogan ---------- */
+
+.slogan {
+  margin-top: 32px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  color: #C8D2E4;
+  opacity: 0;
+  transform: translateY(8px);
+  will-change: opacity, transform;
+  transition:
+    opacity 1.2s var(--ease) 0.45s,
+    transform 1.2s var(--ease) 0.45s;
+}
+
+#exploreBtn.show ~ .slogan {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- HUD（首页底部） ---------- */
+
+.hud {
+  position: fixed;
+  left: calc(var(--pad-x) + env(safe-area-inset-left));
+  right: calc(var(--pad-x) + env(safe-area-inset-right));
+  bottom: calc(var(--pad-y) + env(safe-area-inset-bottom));
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+
+  z-index: 10;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: #8A94A8;
+  text-transform: uppercase;
+
+  opacity: 0;
+  animation: fadeUp 1.6s var(--ease) 2.6s forwards;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+body.scene-orbital .hud {
+  opacity: 0;
+}
+
+/* ---------- Transition overlay ---------- */
+
+.transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+
+  background: radial-gradient(
+    ellipse 70% 70% at 50% 50%,
+    #EEF3FF 0%,
+    #B8CDFF 30%,
+    #7DA8FF 60%,
+    #05070D 100%
+  );
+}
+
+/* ==========================================================
+   Orbital Timeline — 空间装置式导航界面
+   ========================================================== */
+
+.orbital-timeline {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+
+  display: none;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+
+  background:
+    radial-gradient(ellipse 55% 40% at 16% 22%,
+      rgba(30, 45, 90, 0.28) 0%,
+      transparent 60%),
+    radial-gradient(ellipse 50% 50% at 82% 74%,
+      rgba(20, 30, 70, 0.18) 0%,
+      transparent 72%);
+}
+
+.orbital-timeline.is-visible {
+  display: block;
+}
+
+.orbital-scroll-space {
+  height: 500vh;
+  position: relative;
+}
+
+.orbital-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ---------- 北极星：远处的导航锚点 ---------- */
+
+.polaris-anchor {
+  position: absolute;
+  top: 13%;
+  right: 30%;
+
+  width: clamp(150px, 16vw, 250px);
+  height: clamp(150px, 16vw, 250px);
+
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 2.4s var(--ease-slow) 0.6s;
+
+  animation: polarisDrift 18s var(--ease-slow) 3s infinite alternate;
+  will-change: transform;
+}
+
+@keyframes polarisDrift {
+  from { translate: 0 0; }
+  to   { translate: 0 9px; }
+}
+
+.orbital-timeline.is-visible .polaris-anchor {
+  opacity: 0.5;
+}
+
+.polaris-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+
+  background: radial-gradient(
+    circle at center,
+    rgba(226, 238, 255, 0.42) 0%,
+    rgba(180, 210, 255, 0.18) 12%,
+    rgba(125, 168, 255, 0.08) 30%,
+    rgba(125, 168, 255, 0.03) 52%,
+    transparent 72%
+  );
+}
+
+.polaris-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2.2px;
+  height: 2.2px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #F2F6FF;
+  box-shadow:
+    0 0 12px rgba(214, 230, 255, 0.9),
+    0 0 34px rgba(150, 190, 255, 0.35);
+}
+
+/* ---------- 左侧弧形导航：3D 空间装置 ---------- */
+
+.nav-arc-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: clamp(22px, 2.8vw, 34px);
+
+  width: calc(100vh * 120 / 1400);
+  max-width: 15vw;
+
+  pointer-events: none;
+  z-index: 2;
+
+  /* 虚拟相机透视 */
+  perspective: 1400px;
+  perspective-origin: 62% 82%;
+
+  /* 让 SVG 允许溢出到画面外，形成“巨大轨道穿出屏幕”的感觉 */
+  overflow: visible;
+}
+
+/* 相机层：所有 3D 变换挂在它身上，JS 每帧驱动 */
+.arc-camera {
+  width: 100%;
+  height: 100%;
+
+  transform-origin: 55% 100%;
+  transform-style: preserve-3d;
+
+  will-change: transform;
+
+  /* 初始姿态（JS 会覆盖）：
+     底部靠近相机（大、亮），顶部远离相机（小、暗） */
+  transform:
+    translate3d(0, 0, 0)
+    rotateX(42deg)
+    rotateZ(-6deg)
+    rotateY(-8deg)
+    scale(1.3);
+
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.nav-arc-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* 底弧：发丝级参考线 */
+
+.nav-arc-base {
+  stroke: rgba(125, 168, 255, 0.10);
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 2.4s var(--ease-slow) 0.9s;
+}
+
+.orbital-timeline.is-visible .nav-arc-base {
+  opacity: 1;
+}
+
+/* 弧线脊柱：动态分段 */
+
+.nav-arc-spine-group {
+  pointer-events: none;
+}
+
+.nav-arc-spine-seg {
+  stroke: #D9E8FF;
+  stroke-linecap: round;
+  fill: none;
+}
+
+/* ---------- 航点 ---------- */
+
+.nav-node {
+  opacity: 0;
+
+  /* 焦点拉移：滤镜与透明度都由 JS 写入，这里给平滑过渡 */
+  transition:
+    opacity 0.9s var(--ease-out-soft),
+    filter 0.55s var(--ease-out-soft);
+
+  will-change: opacity, filter;
+}
+
+.nav-node-ring {
+  fill: none;
+  stroke: rgba(140, 180, 255, 0.30);
+  stroke-width: 1;
+  transition:
+    stroke 1.1s var(--ease-slow),
+    stroke-width 1.1s var(--ease-slow),
+    filter 1.1s var(--ease-slow);
+}
+
+.nav-node-core {
+  fill: rgba(200, 220, 255, 0.35);
+  transition: fill 1.1s var(--ease-slow);
+}
+
+/* 当前节点：发光 */
+.nav-node.is-active .nav-node-ring {
+  stroke: rgba(228, 240, 255, 0.95);
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 6px rgba(150, 190, 255, 0.7));
+}
+
+.nav-node.is-active .nav-node-core {
+  fill: #FFFFFF;
+}
+
+/* 已过节点：微亮 */
+.nav-node.is-past .nav-node-ring {
+  stroke: rgba(150, 185, 240, 0.42);
+  stroke-width: 1;
+}
+
+.nav-node.is-past .nav-node-core {
+  fill: rgba(190, 212, 245, 0.5);
+}
+
+/* 未到节点：极淡 */
+.nav-node.is-future .nav-node-ring {
+  stroke: rgba(120, 150, 200, 0.16);
+  stroke-width: 0.9;
+}
+
+.nav-node.is-future .nav-node-core {
+  fill: rgba(160, 185, 225, 0.16);
+}
+
+/* ---------- 卫星 ---------- */
+
+.satellite {
+  opacity: 0;
+  transition: opacity 1.4s var(--ease-slow) 1.6s;
+}
+
+.orbital-timeline.is-visible .satellite {
+  opacity: 1;
+}
+
+.sat-core {
+  fill: #FFFFFF;
+  filter: drop-shadow(0 0 8px rgba(220, 235, 255, 0.9));
+}
+
+/* ---------- 位置读数 HUD ---------- */
+
+.arc-hud {
+  position: absolute;
+  left: clamp(104px, 9vw, 150px);
+  bottom: calc(var(--pad-y) + env(safe-area-inset-bottom));
+
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 400;
+  letter-spacing: 0.30em;
+  text-indent: 0.30em;
+  text-transform: uppercase;
+
+  color: rgba(126, 136, 158, 0.38);
+
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 2.4s var(--ease-slow) 1.4s;
+}
+
+.orbital-timeline.is-visible .arc-hud {
+  opacity: 1;
+}
+
+.arc-hud-value {
+  color: rgba(170, 196, 245, 0.55);
+}
+
+/* ---------- 右侧内容区 ---------- */
+
+.nav-content {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 30%;
+  right: 0;
+
+  pointer-events: none;
+}
+
+.nav-panel {
+  position: absolute;
+  top: 50%;
+  left: clamp(24px, 5vw, 96px);
+  width: min(520px, 58%);
+
+  transform: translateY(-50%) scale(0.985);
+  transform-origin: left center;
+
+  opacity: 0;
+  filter: blur(10px);
+  pointer-events: none;
+
+  transition:
+    opacity 1.25s var(--ease-slow),
+    filter 1.25s var(--ease-slow),
+    transform 1.4s var(--ease-out-soft);
+
+  will-change: opacity, filter, transform;
+}
+
+.nav-panel.is-active {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(-50%) scale(1);
+  pointer-events: auto;
+}
+
+/* 编号：很弱 */
+.panel-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.44em;
+  text-indent: 0.44em;
+  text-transform: uppercase;
+  color: rgba(126, 136, 158, 0.40);
+  margin-bottom: 46px;
+}
+
+/* 标题：唯一视觉主角 */
+.panel-title {
+  font-size: clamp(52px, 7vw, 104px);
+  font-weight: 200;
+  letter-spacing: 0.01em;
+  line-height: 0.96;
+  color: var(--text);
+  margin-bottom: 38px;
+  text-transform: uppercase;
+}
+
+/* 英文正文 */
+.panel-line {
+  font-size: clamp(15px, 1.25vw, 18px);
+  font-weight: 300;
+  line-height: 1.7;
+  color: rgba(205, 215, 235, 0.90);
+  max-width: 34ch;
+  margin-bottom: 34px;
+}
+
+/* 中文：补充说明 */
+.panel-sub {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.46em;
+  text-indent: 0.46em;
+  color: var(--accent);
+  opacity: 0.55;
+}
+
+/* ---------- Exit Orbit ---------- */
+
+.back-btn {
+  position: absolute;
+  right: clamp(28px, 5vw, 64px);
+  bottom: calc(var(--pad-y) + env(safe-area-inset-bottom));
+
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 10px 0;
+
+  border: none;
+  background: transparent;
+
+  color: rgba(126, 136, 158, 0.55);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  text-indent: 0.32em;
+
+  cursor: pointer;
+
+  z-index: 4;
+
+  opacity: 0;
+  transition:
+    opacity 1.4s var(--ease-slow) 1.8s,
+    color 0.6s var(--ease-slow);
+}
+
+.orbital-timeline.is-visible .back-btn {
+  opacity: 0.55;
+}
+
+.back-btn span:first-child {
+  font-size: 10px;
+  letter-spacing: 0;
+  text-indent: 0;
+  color: rgba(125, 168, 255, 0.5);
+  transition: transform 0.6s var(--ease-slow);
+}
+
+.back-btn:focus-visible {
+  outline: none;
+  opacity: 1;
+  color: var(--muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .orbital-timeline.is-visible .back-btn:hover {
+    opacity: 0.85;
+    color: rgba(178, 194, 228, 0.9);
+  }
+  .orbital-timeline.is-visible .back-btn:hover span:first-child {
+    transform: translateX(-2px);
+  }
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .nav-content {
+    left: 36%;
+  }
+
+  .panel-title {
+    font-size: clamp(40px, 9vw, 64px);
+  }
+
+  .polaris-anchor {
+    top: 10%;
+    right: 26%;
+    width: clamp(130px, 20vw, 220px);
+    height: clamp(130px, 20vw, 220px);
+  }
+
+  .nav-arc-layer {
+    left: clamp(18px, 2.4vw, 28px);
+    max-width: 18vw;
+    perspective: 1100px;
+    perspective-origin: 58% 80%;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --pad-x: 20px;
+    --pad-y: 16px;
+  }
+
+  .header {
+    gap: 20px;
+  }
+
+  .brand h1 {
+    font-size: 15px;
+    letter-spacing: 0.36em;
+    text-indent: 0.36em;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  .nav-links {
+    gap: 20px;
+  }
+
+  .nav-links a {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-indent: 0.12em;
+  }
+
+  #exploreBtn {
+    padding: 16px 40px 16px 34px;
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-indent: 0.32em;
+  }
+
+  .slogan {
+    margin-top: 24px;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-indent: 0.22em;
+  }
+
+  .hud {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+  }
+
+  .nav-arc-layer {
+    left: 8px;
+    width: calc(100vh * 120 / 1400);
+    max-width: 26vw;
+    perspective: 900px;
+    perspective-origin: 52% 78%;
+  }
+
+  .arc-hud {
+    display: none;
+  }
+
+  .nav-content {
+    left: 34%;
+  }
+
+  .nav-panel {
+    left: 16px;
+    width: min(460px, 90%);
+  }
+
+  .panel-label {
+    font-size: 8.5px;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    margin-bottom: 32px;
+  }
+
+  .panel-title {
+    font-size: clamp(36px, 10vw, 54px);
+    margin-bottom: 30px;
+  }
+
+  .panel-line {
+    font-size: 14px;
+    max-width: 30ch;
+    margin-bottom: 28px;
+  }
+
+  .panel-sub {
+    font-size: 11px;
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
+  }
+
+  .back-btn {
+    right: 20px;
+    bottom: 20px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .nav-links {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .hud span:last-child {
+    display: none;
+  }
+
+  .nav-content {
+    left: 38%;
+  }
+
+  .polaris-anchor {
+    top: 5%;
+    right: 26%;
+    width: clamp(110px, 26vw, 170px);
+    height: clamp(110px, 26vw, 170px);
+    opacity: 0.28;
+  }
+
+  .nav-arc-layer {
+    left: 6px;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .header,
+  .hud {
+    opacity: 1;
+  }
+
+  #exploreBtn,
+  .slogan {
+    opacity: 1;
+    transform: none;
+  }
+
+  .polaris-anchor,
+  .nav-arc-base,
+  .satellite,
+  .nav-panel.is-active,
+  .arc-hud,
+  .back-btn {
+    opacity: 1;
+    transition: none;
+  }
+
+  .nav-node {
+    filter: none !important;
+  }
+
+  .arc-camera {
+    transition: none;
+  }
+}
+
+/* ---------- 无 Canvas 降级 ---------- */
+
+body.no-canvas {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 50%,
+      rgba(58, 94, 190, 0.18) 0%,
+      rgba(38, 66, 148, 0.06) 40%,
+      transparent 70%),
+    radial-gradient(ellipse 100% 100% at 50% 50%,
+      #0a1024 0%,
+      #05070D 55%,
+      #02030a 100%);
+}
+
+body.no-canvas #spaceCanvas {
+  display: none;
+}
+
+body.no-canvas #exploreBtn,
+body.no-canvas .slogan {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- 高对比度 ---------- */
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted: #D0D8E8;
+    --faint: #8A94A8;
+  }
+
+  .header {
+    background: rgba(5, 7, 13, 0.9);
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .nav-links a {
+    color: #EEF2FA;
+  }
+
+  #exploreBtn {
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+}
