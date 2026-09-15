@@ -7,7 +7,7 @@
  * §4  SPRITES         离屏精灵工厂
  * §5  RESOURCES       资源生命周期
  * §6  STATE           状态
- * §6.5 ORBITAL        弧形导航场景（Cover Flow / Vision Pro 空间装置）
+ * §6.5 ORBITAL        弧形导航场景
  * §7  RENDER          渲染
  * §8  LOOP            主循环
  * §9  EVENTS          事件
@@ -16,13 +16,15 @@
  * ============================================================
  */
 
+import { createOrbit3D } from './orbit3d.js';
+
 /* ==========================================================
    §1 CONFIG
    ========================================================== */
 
 const CFG = {
   maxDPR: 2,
-  targetFPS: 40,
+  targetFPS: 60,
   minFPS: 24,
   fpsSampleSize: 60,
   fpsAdaptCooldown: 3000,
@@ -86,43 +88,21 @@ const CFG = {
   meteorLife: [1.2, 2.0],
   meteorTailLength: 14,
 
-  transitionDuration: 1000,
-  transitionZoom: 18,
+  transitionDuration: 1200,
+  returnDuration: 720,
+  orbitalSmoothTime: 90,
 
-  /* 第二幕：进入后的自动轻推 + 弧线脊柱参数 */
-  orbitalAutoDelay: 2200,
-  orbitalAutoDuration: 2000,
-  orbitalAutoTarget: 0.08,
+  /* 第二幕：进入后的轻推 + 弧线脊柱参数 */
+  orbitalAutoDelay: 900,
+  orbitalAutoDuration: 1400,
+  orbitalAutoTarget: 0.035,
   orbitalSpineSegments: 40,
   orbitalSpineFalloff: 0.16,
   orbitalSpineWidthBase: 1.0,
   orbitalSpineWidthAmp: 2.6,
-  orbitalSpineAlphaBase: 0.05,
-  orbitalSpineAlphaAmp: 0.60,
-
-  /* ==========================================================
-     空间相机（Virtual Camera）
-     装置像一件悬浮在黑色空间里的实体雕塑，
-     滚动时相机沿椭圆切线方向轻推 2%–4%，
-     近景位移更大，远景位移更小 —— 形成 Cover Flow 式视差。
-     ========================================================== */
-
-  /* 相机基础姿态：从左前方向右后方斜拍 */
-  camBaseRotX: 42,       // 俯角：底部转向镜头，顶部远离
-  camBaseRotZ: -6,       // 轻微倾斜
-  camBaseRotY: -8,       // 水平偏转
-  camBaseScale: 1.30,    // 整体放大 30%
-
-  /* 相机推进（dolly）：滚动 0→1 时，装置相对视口的反向平移 */
-  camDollyX: -2.2,       // % of vmin（视觉上装置向左）
-  camDollyY: 1.6,        // % of vmin（视觉上装置向下）
-  camDollyRotZ: 1.8,     // deg，随推进轻微旋转
-  camDollyRotY: 1.2,     // deg
-  camDollyScale: 0.030,  // 缩放微变，远景稍缩
-
-  /* 焦点拉移（Focus Pull）：当前节点最清晰，远景越来越虚 */
-  focusSigma: 0.058,     // 高斯衰减半径（弧长比例）
-  focusBlurMax: 2.0,     // 最远节点的模糊上限（px）
+  orbitalSpineAlphaBase: 0.04,
+  orbitalSpineAlphaAmp: 0.68,
+  orbitalTrackShiftRatio: 0.34,
 
   narrowViewport: 720,
   narrowRadiusRatio: 0.34,
@@ -363,7 +343,7 @@ function freeSprites() {
   };
   for (const s of sprites.stars) free(s.c);
   sprites.stars = [];
-  free(sprites.starBright); sprites.starBright = null;
+  free(sprites.starBright?.c); sprites.starBright = null;
   free(sprites.bloom);      sprites.bloom = null;
   free(sprites.dot);        sprites.dot = null;
   free(sprites.nebula);     sprites.nebula = null;
@@ -460,8 +440,6 @@ const state = {
   paletteKey: 'aurora',
 
   scene: 'hero',
-  transitionT0: 0,
-  zoom: 1,
 
   frameTimes: new Float32Array(CFG.fpsSampleSize),
   frameIdx: 0,
@@ -475,415 +453,260 @@ let stars = [];
 const meteors = [];
 
 /* ==========================================================
-   §6.5 ORBITAL NAVIGATION
-   —— Cover Flow / Vision Pro 空间装置
+   §6.5 CINEMATIC SPATIAL NAVIGATION
    ========================================================== */
-
-/* 弧形路径：与 index.html 中 SVG 的 d 属性完全一致。
-   注意：这里的 Path 是“装置本体”的骨架，
-   JS 只负责沿弧长摆放节点与卫星，绝不改动弧线本身。 */
-const ROUTE_D = 'M 20 -40 C 134 340, 134 1060, 20 1440';
-
-/* 5 个航点沿弧长的分布（与原实现完全一致） */
-const NODE_RATIOS = [0.12, 0.31, 0.50, 0.69, 0.88];
 
 let orbitalEl = null;
-let satelliteEl = null;
-let spineGroupEl = null;
 let backBtn = null;
-let arcHudValueEl = null;
-let polarisAnchorEl = null;
+let orbit3DCanvasEl = null;
+let orbit3D = null;
+let orbit3DInit = null;
+let sceneMeterCurrentEl = null;
+let navNodeEls = [];
 
-/* 3D 装置的两层：
-   - navArcLayerEl：透视容器（CSS 里配置 perspective / perspective-origin）
-   - arcCameraEl：相机层，滚动时由 JS 驱动 3D 变换 */
-let navArcLayerEl = null;
-let arcCameraEl = null;
-
-const nodeEls = [];
 const panelEls = [];
-const spineSegEls = [];
+const spineSegEls = []; // legacy-safe empty collection; no orbit spine is rendered.
 
-/* 滚动渲染的 rAF 节流 */
 let orbitalScrollRaf = 0;
-
-/* 离屏 path，用于弧长采样 */
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const routePath = document.createElementNS(SVG_NS, 'path');
-routePath.setAttribute('d', ROUTE_D);
-let routeLength = 0;
-
-/* 自动推进取消标记 */
 let autoAdvanceToken = 0;
+let autoAdvanceRaf = 0;
+let autoAdvanceTimer = 0;
+let sceneTimer = 0;
+let userInteracted = false;
 
-function routeAt(t) {
-  const len = routeLength * clamp(t, 0, 1);
-  return routePath.getPointAtLength(len);
+const orbitalMotion = {
+  current: 0,
+  target: 0,
+  last: 0,
+  maxScroll: 1,
+  active: 0,
+};
+
+function sceneIndexForProgress(progress) {
+  return clamp(Math.round(clamp(progress, 0, 1) * 4), 0, 4);
 }
 
-function routeSlice(t0, t1, steps) {
-  const a = clamp(t0, 0, 1);
-  const b = clamp(t1, 0, 1);
-  if (b <= a) return '';
+function syncScene(active) {
+  const index = clamp(active, 0, Math.max(0, panelEls.length - 1));
+  orbitalMotion.active = index;
 
-  const lenA = routeLength * a;
-  const lenB = routeLength * b;
-  const n = Math.max(2, steps);
+  panelEls.forEach((panel, i) => {
+    const isActive = i === index;
+    panel.classList.toggle('is-active', isActive);
+    panel.classList.toggle('is-before', i < index);
+    panel.classList.toggle('is-after', i > index);
+    panel.setAttribute('aria-hidden', String(!isActive));
+    panel.inert = !isActive;
+  });
 
-  let d = '';
-  for (let i = 0; i <= n; i++) {
-    const len = lenA + (lenB - lenA) * (i / n);
-    const pt = routePath.getPointAtLength(len);
-    d += (i === 0 ? 'M' : 'L') +
-         pt.x.toFixed(2) + ' ' + pt.y.toFixed(2) + ' ';
+  if (sceneMeterCurrentEl) {
+    sceneMeterCurrentEl.textContent = String(index + 1).padStart(2, '0');
   }
-  return d.trim();
+
+  // v10 fixed left navigator: current lit, next dimly lit, rest quiet.
+  navNodeEls.forEach((node, i) => {
+    node.classList.toggle('is-current', i === index);
+    node.classList.toggle('is-next', i === index + 1);
+  });
+
+  document.body.dataset.spatialScene = String(index + 1);
 }
 
-function buildSpineSegments() {
-  if (!spineGroupEl) return;
+function ensureOrbit3D() {
+  if (state.destroyed || !orbit3DCanvasEl) return Promise.resolve(false);
 
-  while (spineGroupEl.firstChild) {
-    spineGroupEl.removeChild(spineGroupEl.firstChild);
+  if (!orbit3D) {
+    orbit3D = createOrbit3D({
+      canvas: orbit3DCanvasEl,
+      getQuality: () => state.quality,
+      getReducedMotion: () => state.reduced,
+    });
   }
-  spineSegEls.length = 0;
 
-  const count = CFG.orbitalSpineSegments;
-
-  for (let i = 0; i < count; i++) {
-    const p = document.createElementNS(SVG_NS, 'path');
-    p.setAttribute('class', 'nav-arc-spine-seg');
-    p.setAttribute('fill', 'none');
-    p.setAttribute('stroke-linecap', 'round');
-    p.setAttribute('stroke-width', '1');
-    p.setAttribute('stroke-opacity', '0');
-    spineGroupEl.appendChild(p);
-    spineSegEls.push(p);
+  if (!orbit3DInit) {
+    orbit3DInit = orbit3D.init()
+      .then((ok) => {
+        if (!ok || state.destroyed) return false;
+        document.body.classList.add('spatial-3d-ready');
+        orbit3D.resize();
+        orbit3D.setProgress(orbitalMotion.current);
+        if ((state.scene === 'transitioning' || state.scene === 'orbital') && !document.hidden) {
+          orbit3D.start();
+        }
+        return true;
+      })
+      .catch((err) => {
+        console.warn('[Polaris] Spatial 3D unavailable:', err);
+        document.body.classList.add('spatial-3d-fallback');
+        return false;
+      });
   }
+
+  return orbit3DInit;
 }
 
-function placeNodes() {
-  for (let i = 0; i < nodeEls.length; i++) {
-    const pt = routeAt(NODE_RATIOS[i]);
-    nodeEls[i].setAttribute(
-      'transform',
-      `translate(${pt.x.toFixed(2)} ${pt.y.toFixed(2)})`
-    );
-  }
+function renderOrbitalAt(progress) {
+  const p = clamp(progress, 0, 1);
+  orbit3D?.setProgress?.(p);
+
+  const active = sceneIndexForProgress(p);
+  if (active !== orbitalMotion.active) syncScene(active);
 }
 
-/* 弧线脊柱：整条弧由 N 段组成。
-   靠近卫星的段落更粗更亮，远离卫星逐渐变细并消失在黑暗中。 */
-function renderSpine(p) {
-  const count = spineSegEls.length;
-  if (!count) return;
-
-  const sigma = CFG.orbitalSpineFalloff;
-  const wBase = CFG.orbitalSpineWidthBase;
-  const wAmp  = CFG.orbitalSpineWidthAmp;
-  const aBase = CFG.orbitalSpineAlphaBase;
-  const aAmp  = CFG.orbitalSpineAlphaAmp;
-
-  const invVar = 1 / (2 * sigma * sigma);
-
-  for (let i = 0; i < count; i++) {
-    const f0 = i / count;
-    const f1 = (i + 1) / count;
-    const mid = (f0 + f1) * 0.5;
-
-    const d = mid - p;
-    const prox = Math.exp(-(d * d) * invVar);
-
-    const edge = Math.min(1, mid / 0.06, (1 - mid) / 0.06);
-
-    const el = spineSegEls[i];
-    el.setAttribute('d', routeSlice(f0, f1, 1));
-    el.setAttribute('stroke-width', (wBase + wAmp * prox).toFixed(2));
-    el.setAttribute('stroke-opacity', ((aBase + aAmp * prox) * edge).toFixed(3));
-  }
+function stopOrbitalMotion() {
+  cancelAnimationFrame(orbitalScrollRaf);
+  orbitalScrollRaf = 0;
+  orbitalMotion.last = 0;
 }
 
-/* 找到离卫星最近的节点索引 */
-function nearestNodeIndex(p) {
-  let best = 0;
-  let bestD = Infinity;
-  for (let i = 0; i < NODE_RATIOS.length; i++) {
-    const d = Math.abs(p - NODE_RATIOS[i]);
-    if (d < bestD) { bestD = d; best = i; }
-  }
-  return best;
-}
+function animateOrbital(now) {
+  orbitalScrollRaf = 0;
+  if (state.scene !== 'orbital' && state.scene !== 'transitioning') return;
 
-/* ==========================================================
-   相机推进：滚动时沿椭圆切线方向轻推整个装置。
-   相机向右上方推进 → 装置相对视口向左下方平移。
-   远景位移更小，近景位移更大 —— 这是 Cover Flow 的关键。
-   ========================================================== */
-function applyCamera(p) {
-  if (!arcCameraEl) return;
+  const dt = orbitalMotion.last ? Math.min(now - orbitalMotion.last, 64) : 16.67;
+  orbitalMotion.last = now;
+  const amount = 1 - Math.exp(-dt / Math.max(1, CFG.orbitalSmoothTime));
+  orbitalMotion.current = lerp(orbitalMotion.current, orbitalMotion.target, amount);
 
-  /* reduced-motion：直接保持静态初始姿态 */
-  if (state.reduced) {
-    arcCameraEl.style.transform =
-      `translate3d(0, 0, 0) ` +
-      `rotateX(${CFG.camBaseRotX}deg) ` +
-      `rotateZ(${CFG.camBaseRotZ}deg) ` +
-      `rotateY(${CFG.camBaseRotY}deg) ` +
-      `scale(${CFG.camBaseScale})`;
-    return;
+  if (Math.abs(orbitalMotion.target - orbitalMotion.current) < 0.00005) {
+    orbitalMotion.current = orbitalMotion.target;
+    orbitalMotion.last = 0;
+  } else {
+    orbitalScrollRaf = requestAnimationFrame(animateOrbital);
   }
 
-  /* 用 easeOut 让推进更 Apple：起步柔和，到位稳 */
-  const eased = easeOut(clamp(p, 0, 1));
-
-  /* 视口最小边作为单位，保证响应式 */
-  const vmin = Math.min(state.w, state.h) || 1;
-
-  /* 装置相对平移（反向即相机推进方向） */
-  const tx = eased * CFG.camDollyX * vmin * 0.01;
-  const ty = eased * CFG.camDollyY * vmin * 0.01;
-
-  /* 推进时轻微转向（Cover Flow 感） */
-  const rz = CFG.camBaseRotZ + eased * CFG.camDollyRotZ;
-  const ry = CFG.camBaseRotY + eased * CFG.camDollyRotY;
-
-  /* 远景稍缩，近景稍大 */
-  const sc = CFG.camBaseScale + eased * CFG.camDollyScale;
-
-  arcCameraEl.style.transform =
-    `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
-    `rotateX(${CFG.camBaseRotX}deg) ` +
-    `rotateZ(${rz.toFixed(3)}deg) ` +
-    `rotateY(${ry.toFixed(3)}deg) ` +
-    `scale(${sc.toFixed(4)})`;
-}
-
-/* ==========================================================
-   焦点拉移：当前节点完全清晰，
-   邻近节点轻微模糊（0.5–1px），
-   更远的节点继续模糊（1.5–2px）。
-   使用高斯衰减，确保过渡连续、不跳变。
-   ========================================================== */
-function focusBlurFor(p, nodeRatio) {
-  const d = p - nodeRatio;
-  const sigma = CFG.focusSigma;
-  const prox = Math.exp(-(d * d) / (2 * sigma * sigma));
-  return (1 - prox) * CFG.focusBlurMax;
-}
-
-function renderOrbitalAt(p) {
-  p = clamp(p, 0, 1);
-
-  /* ---------- 卫星位置：沿椭圆弧长摆放 ---------- */
-  const satPt = routeAt(p);
-  if (satelliteEl) {
-    satelliteEl.setAttribute(
-      'transform',
-      `translate(${satPt.x.toFixed(2)} ${satPt.y.toFixed(2)})`
-    );
-  }
-
-  /* ---------- 弧线脊柱（靠近卫星粗亮，远离渐隐） ---------- */
-  renderSpine(p);
-
-  /* ---------- 北极星：远处锚点，随进度极缓慢漂移 ---------- */
-  if (polarisAnchorEl && !state.reduced) {
-    const drift = (p - 0.5) * 22;
-    polarisAnchorEl.style.transform = `translateY(${drift.toFixed(1)}px)`;
-  }
-
-  /* ---------- 相机推进：每帧写入 transform ---------- */
-  applyCamera(p);
-
-  /* ---------- 节点三态 + 焦点拉移 ---------- */
-  const activeIdx = nearestNodeIndex(p);
-
-  for (let i = 0; i < nodeEls.length; i++) {
-    const el = nodeEls[i];
-    const isCurrent = i === activeIdx;
-    const isPast = i < activeIdx;
-
-    el.classList.toggle('is-active', isCurrent);
-    el.classList.toggle('is-past', isPast && !isCurrent);
-    el.classList.toggle('is-future', !isPast && !isCurrent);
-
-    /* 透明度：当前最亮，已过微亮，未到极淡 */
-    let op;
-    if (isCurrent) {
-      const near = Math.max(0, 1 - Math.abs(p - NODE_RATIOS[i]) / 0.16);
-      op = 0.82 + near * 0.18;
-    } else if (isPast) {
-      op = 0.42;
-    } else {
-      op = 0.15;
-    }
-
-    /* 焦点拉移：按与当前进度的弧长距离，连续计算模糊值 */
-    const blur = focusBlurFor(p, NODE_RATIOS[i]);
-
-    el.style.opacity = op.toFixed(3);
-
-    if (blur > 0.04) {
-      el.style.filter = `blur(${blur.toFixed(2)}px)`;
-    } else {
-      el.style.filter = 'none';
-    }
-  }
-
-  /* ---------- HUD：Where am I ---------- */
-  if (arcHudValueEl) {
-    arcHudValueEl.textContent =
-      String(activeIdx + 1).padStart(2, '0') + ' / 05';
-  }
-
-  /* ---------- 右侧面板：Blur → Sharp，位置保持不变 ---------- */
-  for (let i = 0; i < panelEls.length; i++) {
-    panelEls[i].classList.toggle('is-active', i === activeIdx);
-  }
+  renderOrbitalAt(orbitalMotion.current);
 }
 
 function onOrbitalScroll() {
-  if (state.scene !== 'orbital' || !orbitalEl) return;
-  if (orbitalScrollRaf) return;
+  if (!orbitalEl || (state.scene !== 'orbital' && state.scene !== 'transitioning')) return;
 
-  /* rAF 节流：滚动事件一帧可能触发多次，只渲染最后一次状态 */
-  orbitalScrollRaf = requestAnimationFrame(() => {
-    orbitalScrollRaf = 0;
+  orbitalMotion.target = clamp(
+    orbitalEl.scrollTop / Math.max(1, orbitalMotion.maxScroll),
+    0,
+    1
+  );
 
-    const maxScroll = orbitalEl.scrollHeight - orbitalEl.clientHeight;
-    const p = maxScroll > 0
-      ? clamp(orbitalEl.scrollTop / maxScroll, 0, 1)
-      : 0;
-
-    renderOrbitalAt(p);
-  });
+  if (state.reduced) {
+    stopOrbitalMotion();
+    orbitalMotion.current = orbitalMotion.target;
+    renderOrbitalAt(orbitalMotion.current);
+  } else if (!orbitalScrollRaf) {
+    orbitalScrollRaf = requestAnimationFrame(animateOrbital);
+  }
 }
 
-/** 进入第二幕后的自动轻推：让用户看到卫星“起步”，但不强迫 */
+function cancelAutoAdvance() {
+  ++autoAdvanceToken;
+  clearTimeout(autoAdvanceTimer);
+  cancelAnimationFrame(autoAdvanceRaf);
+  autoAdvanceTimer = 0;
+  autoAdvanceRaf = 0;
+}
+
+function onOrbitalInput(e) {
+  if (e.type === 'keydown' && !['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(e.key)) return;
+  userInteracted = true;
+  cancelAutoAdvance();
+}
+
+// Kept as a compatibility no-op. Cinematic scenes should move only when the user scrolls.
 function autoAdvanceOrbital() {
-  if (!orbitalEl) return;
+  cancelAutoAdvance();
+}
 
-  const token = ++autoAdvanceToken;
-  const maxScroll = orbitalEl.scrollHeight - orbitalEl.clientHeight;
-  const targetScroll = CFG.orbitalAutoTarget * maxScroll;
+function setHeroAvailable(available) {
+  if (!heroEl) return;
+  heroEl.inert = !available;
+  heroEl.setAttribute('aria-hidden', String(!available));
+}
 
-  const startTime = performance.now();
+function finishEnter() {
+  clearTimeout(sceneTimer);
+  sceneTimer = 0;
+  if (state.scene !== 'transitioning') return;
 
-  function step(now) {
-    if (token !== autoAdvanceToken) return;
-    if (state.scene !== 'orbital') return;
+  state.scene = 'orbital';
+  document.body.classList.add('scene-orbital');
+  document.body.classList.remove('scene-entering');
+  syncScene(sceneIndexForProgress(orbitalMotion.current));
 
-    const elapsed = now - startTime;
-
-    if (elapsed < CFG.orbitalAutoDelay) {
-      requestAnimationFrame(step);
-      return;
-    }
-
-    const t = clamp(
-      (elapsed - CFG.orbitalAutoDelay) / CFG.orbitalAutoDuration,
-      0, 1
-    );
-    const eased = easeOut(t);
-
-    /* 用户手动滚动超过阈值 → 取消自动推进 */
-    if (eased > 0.02 && eased < 0.98 &&
-        Math.abs(orbitalEl.scrollTop - eased * targetScroll) > 14) {
-      return;
-    }
-
-    orbitalEl.scrollTop = eased * targetScroll;
-    renderOrbitalAt(eased * CFG.orbitalAutoTarget);
-
-    if (t < 1) {
-      requestAnimationFrame(step);
-    }
-  }
-
-  requestAnimationFrame(step);
+  if (!userInteracted) backBtn?.focus({ preventScroll: true });
+  startBackdropLoop();
+  orbit3D?.start();
 }
 
 function enterOrbital() {
-  if (state.scene === 'orbital') return;
-  state.scene = 'orbital';
+  if (state.scene !== 'hero' || state.destroyed) return;
 
-  document.body.classList.add('scene-orbital');
+  state.scene = 'transitioning';
+  stopLoop();
+  cancelAutoAdvance();
+  stopOrbitalMotion();
+  userInteracted = false;
 
-  if (overlayEl) {
-    overlayEl.style.transition = 'none';
-    overlayEl.style.opacity = '1';
-  }
+  orbitalMotion.current = 0;
+  orbitalMotion.target = 0;
+  orbitalMotion.active = 0;
 
-  if (heroEl) {
-    heroEl.style.transition = 'opacity 0.35s ease';
-    heroEl.style.opacity = '0';
-    heroEl.style.pointerEvents = 'none';
-  }
+  drawOrbitalBackdrop();
+  setHeroAvailable(false);
+  syncScene(0);
 
   if (orbitalEl) {
-    orbitalEl.classList.add('is-visible');
+    orbitalEl.inert = false;
     orbitalEl.setAttribute('aria-hidden', 'false');
     orbitalEl.scrollTop = 0;
+    orbitalMotion.maxScroll = Math.max(1, orbitalEl.scrollHeight - orbitalEl.clientHeight);
   }
 
-  stopLoop();
+  document.body.classList.add('scene-entering');
+  orbitalEl?.classList.add('is-visible');
 
-  /* 第二幕背景：星云 + 星空（静态渲染省电） */
-  drawOrbitalBackdrop();
+  // Load WebGL in parallel with the existing scene transition. Text remains usable if loading fails.
+  ensureOrbit3D();
 
-  /* 初始相机姿态 + 初始节点状态 */
-  renderOrbitalAt(0);
+  if (state.reduced) finishEnter();
+  else sceneTimer = setTimeout(finishEnter, CFG.transitionDuration);
+}
 
-  requestAnimationFrame(() => {
-    if (overlayEl) {
-      overlayEl.style.transition = 'opacity 0.7s ease';
-      overlayEl.style.opacity = '0';
-    }
+function finishReturn() {
+  clearTimeout(sceneTimer);
+  sceneTimer = 0;
+  if (state.scene !== 'returning') return;
 
-    if (!state.reduced) {
-      autoAdvanceOrbital();
-    } else {
-      renderOrbitalAt(CFG.orbitalAutoTarget);
-    }
-  });
+  state.scene = 'hero';
+  document.body.classList.remove('scene-returning');
+  delete document.body.dataset.spatialScene;
+  setHeroAvailable(true);
+  button?.focus({ preventScroll: true });
+
+  if (state.reduced) renderStatic();
+  else if (!document.hidden) startLoop();
 }
 
 function returnToHero() {
-  if (state.scene !== 'orbital') return;
-  state.scene = 'hero';
-  state.zoom = 1;
+  if (state.scene !== 'orbital' && state.scene !== 'transitioning') return;
 
-  autoAdvanceToken++;
-  if (orbitalScrollRaf) {
-    cancelAnimationFrame(orbitalScrollRaf);
-    orbitalScrollRaf = 0;
-  }
+  stopBackdropLoop();
+  orbit3D?.stop();
+  clearTimeout(sceneTimer);
+  cancelAutoAdvance();
+  stopOrbitalMotion();
+  state.scene = 'returning';
 
-  document.body.classList.remove('scene-orbital');
+  if (ctx) render(performance.now(), 0);
+  document.body.classList.add('scene-returning', 'hero-revisited');
+  document.body.classList.remove('scene-entering', 'scene-orbital');
 
   if (orbitalEl) {
     orbitalEl.classList.remove('is-visible');
+    orbitalEl.inert = true;
     orbitalEl.setAttribute('aria-hidden', 'true');
-    orbitalEl.scrollTop = 0;
   }
 
-  if (heroEl) {
-    heroEl.style.transition = 'opacity 0.6s ease';
-    heroEl.style.opacity = '1';
-    heroEl.style.pointerEvents = '';
-  }
-
-  if (overlayEl) {
-    overlayEl.style.transition = 'none';
-    overlayEl.style.opacity = '0';
-  }
-
-  if (state.reduced) {
-    renderStatic();
-  } else {
-    state.lastFrame = 0;
-    startLoop();
-  }
+  if (state.reduced) finishReturn();
+  else sceneTimer = setTimeout(finishReturn, CFG.returnDuration);
 }
 
 /* ==========================================================
@@ -895,31 +718,33 @@ let canvas = null;
 let button = null;
 let heroEl = null;
 let headerEl = null;
-let overlayEl = null;
+let backdropCanvas = null;
+let backdropCtx = null;
+const backdropMotion = { raf: 0, last: 0, time: 0 };
 
-function drawNebula(t) {
+function drawNebula(t, target = ctx, staticView = false) {
   if (!sprites.nebula) return;
 
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
+  target.globalCompositeOperation = 'source-over';
+  target.globalAlpha = 1;
 
   const pad = CFG.nebulaPad;
   const drift = t * CFG.nebulaDriftSpeed;
   const dx = Math.cos(drift) * 8;
   const dy = Math.sin(drift * 0.8) * 6;
 
-  const px = -pad + state.cx * CFG.nebulaParallax + dx;
-  const py = -pad + state.cy * CFG.nebulaParallax + dy;
+  const px = -pad + (staticView ? 0 : state.cx) * CFG.nebulaParallax + dx;
+  const py = -pad + (staticView ? 0 : state.cy) * CFG.nebulaParallax + dy;
 
-  ctx.drawImage(sprites.nebula, px, py, sprites.nebulaW, sprites.nebulaH);
+  target.drawImage(sprites.nebula, px, py, sprites.nebulaW, sprites.nebulaH);
 }
 
-function drawStars(t) {
+function drawStars(t, target = ctx, staticView = false, driftTime = 0) {
   const intro = easeOut(seg(t, CFG.tStars, CFG.introStars));
   if (intro <= 0) return;
 
   const w = state.w, h = state.h;
-  const cx = state.cx, cy = state.cy;
+  const cx = (staticView ? 0 : state.cx), cy = (staticView ? 0 : state.cy);
   const par = CFG.parallaxStars;
   const minA = CFG.starMinDrawAlpha;
   const list = sprites.stars;
@@ -929,7 +754,7 @@ function drawStars(t) {
   const px1 = cx * par[1], py1 = cy * par[1];
   const px2 = cx * par[2], py2 = cy * par[2];
 
-  ctx.globalCompositeOperation = 'source-over';
+  target.globalCompositeOperation = 'source-over';
 
   for (let i = 0, n = stars.length; i < n; i++) {
     const s = stars[i];
@@ -938,8 +763,11 @@ function drawStars(t) {
     const ox = layer === 0 ? px0 : layer === 1 ? px1 : px2;
     const oy = layer === 0 ? py0 : layer === 1 ? py1 : py2;
 
-    const x = s.x * w + ox;
-    const y = s.y * h + oy;
+    // 仅第二幕传入漂移时间；首页星空维持原样。
+    const driftX = Math.sin(driftTime * 0.06) * (layer + 1) * 10;
+    const driftY = (Math.cos(driftTime * 0.045) - 1) * (layer + 1) * 5;
+    const x = s.x * w + ox + driftX;
+    const y = s.y * h + oy + driftY;
 
     if (!inViewport(x, y, 40, w, h)) continue;
 
@@ -949,19 +777,19 @@ function drawStars(t) {
 
     if (s.bright && sprites.starBright) {
       const r = sprites.starBright.r;
-      ctx.globalAlpha = a * 0.85;
-      ctx.drawImage(sprites.starBright.c, x - r, y - r, r * 2, r * 2);
+      target.globalAlpha = a * 0.85;
+      target.drawImage(sprites.starBright.c, x - r, y - r, r * 2, r * 2);
       continue;
     }
 
     const sp = list[layer];
     const r = sp.r;
 
-    ctx.globalAlpha = a;
-    ctx.drawImage(sp.c, x - r, y - r, r * 2, r * 2);
+    target.globalAlpha = a;
+    target.drawImage(sp.c, x - r, y - r, r * 2, r * 2);
   }
 
-  ctx.globalAlpha = 1;
+  target.globalAlpha = 1;
 }
 
 function drawAzimuth(t) {
@@ -1191,39 +1019,17 @@ function render(now, dt) {
   if (!state.t0) state.t0 = now;
   const t = (now - state.t0) / 1000;
 
-  if (state.scene === 'transitioning') {
-    const elapsed = now - state.transitionT0;
-    const p = clamp(elapsed / CFG.transitionDuration, 0, 1);
-    const eased = Math.pow(p, 2.5);
-    state.zoom = 1 + eased * (CFG.transitionZoom - 1);
 
-    if (overlayEl && p > 0.75) {
-      overlayEl.style.opacity = ((p - 0.75) / 0.25).toFixed(3);
-    }
 
-    if (p >= 1) {
-      enterOrbital();
-      return;
-    }
-  }
-
-  const sm = CFG.smoothFactor;
+  const sm = 1 - Math.pow(1 - CFG.smoothFactor, dt * 60);
   state.cx = lerp(state.cx, state.px, sm);
   state.cy = lerp(state.cy, state.py, sm);
-  state.hoverBoost = lerp(state.hoverBoost, state.targetBoost, 0.12);
+  state.hoverBoost = lerp(state.hoverBoost, state.targetBoost, 1 - Math.pow(0.88, dt * 60));
 
   ctx.fillStyle = COLOR.bg;
   ctx.fillRect(0, 0, state.w, state.h);
 
-  const z = state.zoom;
-  if (z !== 1) {
-    const cx = state.w / 2;
-    const cy = state.h / 2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(z, z);
-    ctx.translate(-cx, -cy);
-  }
+
 
   drawNebula(t);
   drawStars(t);
@@ -1233,35 +1039,55 @@ function render(now, dt) {
   updateMeteors(dt);
   drawMeteors();
 
-  if (z !== 1) ctx.restore();
 
   if (t > CFG.tButton && state.scene === 'hero') showButton();
 }
 
-/* 第二幕静态背景：星云 + 星空。
+/* 第二幕背景：固定星云 + 缓慢漂移、闪烁的星空。
+   刻意不含轨道环 / 核心 / 方位光带 / 流星——
    第二幕的视觉脊柱是左侧 SVG 弧线导航，Canvas 只做安静的深空底 */
 function drawOrbitalBackdrop() {
-  if (!ctx) return;
+  if (!backdropCtx) return;
+  backdropCtx.fillStyle = COLOR.bg;
+  backdropCtx.fillRect(0, 0, state.w, state.h);
+  drawNebula(0, backdropCtx, true);
+  drawStars(999 + backdropMotion.time, backdropCtx, true, backdropMotion.time);
+}
 
-  state.cx = 0;
-  state.cy = 0;
+function startBackdropLoop() {
+  if (backdropMotion.raf || !backdropCtx || state.destroyed || state.reduced ||
+      document.hidden || state.scene !== 'orbital') return;
+  backdropMotion.last = 0;
+  backdropMotion.raf = requestAnimationFrame(animateBackdrop);
+}
 
-  ctx.fillStyle = COLOR.bg;
-  ctx.fillRect(0, 0, state.w, state.h);
+function stopBackdropLoop() {
+  cancelAnimationFrame(backdropMotion.raf);
+  backdropMotion.raf = 0;
+  backdropMotion.last = 0;
+}
 
-  drawNebula(0);
-  drawStars(999);
+function animateBackdrop(now) {
+  backdropMotion.raf = 0;
+  if (!backdropCtx || state.destroyed || state.reduced || document.hidden ||
+      state.scene !== 'orbital') return;
+  if (!backdropMotion.last) backdropMotion.last = now;
+  const elapsed = now - backdropMotion.last;
+  if (elapsed + 0.5 >= currentFrameBudget()) {
+    backdropMotion.time += Math.min(elapsed, 100) / 1000;
+    backdropMotion.last = now;
+    drawOrbitalBackdrop();
+  }
+  backdropMotion.raf = requestAnimationFrame(animateBackdrop);
 }
 
 function renderStatic() {
+  if (!ctx) return;
   state.cx = state.cy = 0;
 
-  if (state.scene === 'orbital') {
+  /* 场景感知：第二幕用其专属背景 */
+  if (state.scene === 'orbital' || state.scene === 'transitioning') {
     drawOrbitalBackdrop();
-    /* 静态时也把相机姿态落到初始位置 */
-    if (state.reduced) {
-      renderOrbitalAt(CFG.orbitalAutoTarget);
-    }
     return;
   }
 
@@ -1315,7 +1141,7 @@ function adaptQuality(now) {
     return;
   }
 
-  if (fps > CFG.targetFPS * 1.35 && state.quality === 'low') {
+  if (fps > CFG.targetFPS * 0.95 && state.quality === 'low') {
     setQuality('mid', true);
     state.lastAdapt = now;
     return;
@@ -1337,14 +1163,15 @@ function loop(now) {
   }
 
   const dt = now - state.lastFrame;
-  if (dt < currentFrameBudget()) return;
+  const budget = currentFrameBudget();
+  if (dt + 0.5 < budget) return;
 
   if (dt > 1000) {
     state.lastFrame = now;
     return;
   }
 
-  state.lastFrame = now;
+  state.lastFrame = now - (dt >= budget ? dt % budget : 0);
 
   try {
     render(now, Math.min(dt / 1000, 0.1));
@@ -1359,7 +1186,7 @@ function loop(now) {
 }
 
 function startLoop() {
-  if (state.raf || state.destroyed || state.reduced) return;
+  if (state.raf || state.destroyed || state.reduced || !ctx || document.hidden || state.scene !== 'hero') return;
   state.lastFrame = 0;
   state.raf = requestAnimationFrame(loop);
 }
@@ -1396,52 +1223,50 @@ const onResize = debounce(() => {
   if (state.destroyed) return;
   resize();
   if (state.reduced) renderStatic();
-  /* 第二幕中：重绘静态背景 + 按当前滚动位置重新应用相机 */
-  if (state.scene === 'orbital') {
-    const maxScroll = orbitalEl.scrollHeight - orbitalEl.clientHeight;
-    const p = maxScroll > 0 ? clamp(orbitalEl.scrollTop / maxScroll, 0, 1) : 0;
-    renderOrbitalAt(p);
-  }
 }, CFG.resizeDebounce);
 
 function onVisibility() {
   if (state.destroyed) return;
-
   if (document.hidden) {
-    if (state.t0 && state.scene !== 'orbital') {
-      state.pausedAt = performance.now() - state.t0;
-    }
+    stopBackdropLoop();
+    orbit3D?.stop();
+    if (state.t0) state.pausedAt = performance.now() - state.t0;
     stopLoop();
-  } else if (!state.reduced && state.scene !== 'orbital') {
-    if (state.pausedAt) {
-      state.t0 = performance.now() - state.pausedAt;
+    cancelAutoAdvance();
+    stopOrbitalMotion();
+    if (state.scene === 'transitioning') finishEnter();
+    if (state.scene === 'returning') finishReturn();
+    cancelAutoAdvance();
+  } else {
+    if (state.pausedAt) state.t0 = performance.now() - state.pausedAt;
+    state.pausedAt = 0;
+    if (state.scene === 'orbital') {
+      onOrbitalScroll();
+      startBackdropLoop();
+      orbit3D?.start();
     }
-    state.lastFrame = 0;
-    startLoop();
+    else if (!state.reduced) startLoop();
   }
 }
 
 function onReducedChange(e) {
   if (state.destroyed) return;
   state.reduced = e.matches;
-
+  orbit3D?.setReduced();
   if (state.reduced) {
+    stopBackdropLoop();
     stopLoop();
+    cancelAutoAdvance();
+    stopOrbitalMotion();
+    if (state.scene === 'transitioning') finishEnter();
+    if (state.scene === 'returning') finishReturn();
+    if (state.scene === 'orbital') onOrbitalScroll();
     renderStatic();
     showButton();
-    /* 相机归位 */
-    applyCamera(0);
-  } else if (state.scene !== 'orbital') {
-    state.t0 = state.pausedAt
-      ? performance.now() - state.pausedAt
-      : performance.now();
-    state.lastFrame = 0;
-    startLoop();
   } else {
-    /* 从 reduced 恢复时，重新按当前滚动位置应用相机 */
-    const maxScroll = orbitalEl.scrollHeight - orbitalEl.clientHeight;
-    const p = maxScroll > 0 ? clamp(orbitalEl.scrollTop / maxScroll, 0, 1) : 0;
-    renderOrbitalAt(p);
+    startLoop();
+    startBackdropLoop();
+    if (state.scene === 'orbital' || state.scene === 'transitioning') orbit3D?.start();
   }
 }
 
@@ -1450,32 +1275,40 @@ function onBtnLeave() { state.targetBoost = 0; }
 function onBtnDown()  { state.targetBoost = 1.4; }
 function onBtnUp()    { state.targetBoost = state.hoverBoost > 0.5 ? 1 : 0; }
 
-function onUnload() { destroy(); }
+function onUnload(e) {
+  stopBackdropLoop();
+  orbit3D?.stop();
+  if (e.persisted) {
+    stopLoop();
+    cancelAutoAdvance();
+    stopOrbitalMotion();
+  } else destroy();
+}
+function onPageShow(e) { if (e.persisted) onVisibility(); }
 
 /* ==========================================================
    §10 LIFECYCLE
    ========================================================== */
 
 function startTransition() {
-  if (state.scene !== 'hero') return;
-
-  /* reduced-motion：跳过缩放转场，直接切到第二幕 */
-  if (state.reduced) {
-    enterOrbital();
-    return;
-  }
-
-  state.scene = 'transitioning';
-  state.transitionT0 = performance.now();
-  state.lastFrame = 0;
+  enterOrbital();
 }
 
 function resize() {
   state.w = window.innerWidth;
   state.h = window.innerHeight;
 
+  if (orbitalEl) {
+    orbitalMotion.maxScroll = Math.max(1, orbitalEl.scrollHeight - orbitalEl.clientHeight);
+    onOrbitalScroll();
+  }
+
   const cap = Math.min(QUALITY.dprCap, CFG.maxDPR);
   state.dpr = Math.min(window.devicePixelRatio || 1, cap);
+
+  orbit3D?.resize();
+
+  if (!ctx) return;
 
   canvas.width  = Math.floor(state.w * state.dpr);
   canvas.height = Math.floor(state.h * state.dpr);
@@ -1483,6 +1316,11 @@ function resize() {
   canvas.style.height = state.h + 'px';
 
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  if (backdropCtx) {
+    backdropCanvas.width = canvas.width;
+    backdropCanvas.height = canvas.height;
+    backdropCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  }
 
   const m = Math.min(state.w, state.h);
   const narrow = state.w < CFG.narrowViewport;
@@ -1491,8 +1329,10 @@ function resize() {
   buildStars();
   buildNebula();
 
-  if (state.scene === 'orbital') {
+  /* 第二幕中调整窗口：重绘静态背景 */
+  if (state.scene !== 'hero') {
     drawOrbitalBackdrop();
+    if (state.scene === 'returning' || state.scene === 'transitioning') render(performance.now(), 0);
   }
 }
 
@@ -1542,20 +1382,23 @@ function showButton() {
 
 function destroy() {
   if (state.destroyed) return;
+  stopBackdropLoop();
   state.destroyed = true;
 
   stopLoop();
-  autoAdvanceToken++;
-  if (orbitalScrollRaf) {
-    cancelAnimationFrame(orbitalScrollRaf);
-    orbitalScrollRaf = 0;
-  }
+  cancelAutoAdvance();
+  stopOrbitalMotion();
+  orbit3D?.destroy();
+  orbit3D = null;
+  orbit3DInit = null;
+  clearTimeout(sceneTimer);
 
   window.removeEventListener('resize', onResize);
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('touchmove', onTouchMove);
   window.removeEventListener('mousemove', onPointerMove);
   window.removeEventListener('pagehide', onUnload);
+  window.removeEventListener('pageshow', onPageShow);
   document.removeEventListener('visibilitychange', onVisibility);
 
   if (button) {
@@ -1574,6 +1417,7 @@ function destroy() {
 
   if (orbitalEl) {
     orbitalEl.removeEventListener('scroll', onOrbitalScroll);
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(type => orbitalEl.removeEventListener(type, onOrbitalInput));
   }
 
   if (mqlReduce && mqlReduce.removeEventListener) {
@@ -1593,20 +1437,22 @@ function destroy() {
 let mqlReduce = null;
 let bound = false;
 
-function setQuality(level, isRuntime) {
-  if (!QUALITY_PRESETS[level]) return;
+function setQuality(level, isRuntime = true) {
+  if (state.destroyed || !QUALITY_PRESETS[level]) return;
 
   state.quality = level;
   QUALITY = QUALITY_PRESETS[level];
 
-  if (!isRuntime) return;
+  if (!isRuntime || !ctx) return;
 
   buildSprites();
   resize();
+  orbit3D?.resize();
+  if (state.reduced) renderStatic();
 }
 
 function setPalette(name) {
-  if (!PALETTES[name]) return;
+  if (state.destroyed || !ctx || !PALETTES[name]) return;
 
   state.paletteKey = name;
   Object.assign(COLOR, PALETTES[name]);
@@ -1614,12 +1460,18 @@ function setPalette(name) {
 
   buildSprites();
   buildNebula();
+  if (state.scene !== 'hero') drawOrbitalBackdrop();
+  if (state.reduced) renderStatic();
 }
 
 function setConfig(partial) {
-  if (!partial || typeof partial !== 'object') return;
+  if (state.destroyed || !partial || typeof partial !== 'object') return;
 
   Object.assign(CFG, partial);
+
+  document.documentElement.style.setProperty('--scene-duration', CFG.transitionDuration + 'ms');
+  document.documentElement.style.setProperty('--return-duration', CFG.returnDuration + 'ms');
+  if (!ctx) return;
 
   if (partial.starBase !== undefined ||
       partial.starMin !== undefined ||
@@ -1635,13 +1487,6 @@ function setConfig(partial) {
       partial.nebulaMainRadius !== undefined) {
     freeNebula();
     buildNebula();
-  }
-
-  /* 相机参数变化时，按当前滚动位置重新应用 */
-  if (state.scene === 'orbital' && orbitalEl) {
-    const maxScroll = orbitalEl.scrollHeight - orbitalEl.clientHeight;
-    const p = maxScroll > 0 ? clamp(orbitalEl.scrollTop / maxScroll, 0, 1) : 0;
-    renderOrbitalAt(p);
   }
 }
 
@@ -1675,41 +1520,26 @@ function init() {
   button = document.getElementById('exploreBtn');
   heroEl = document.getElementById('hero');
   headerEl = document.getElementById('header');
-  overlayEl = document.getElementById('transitionOverlay');
+  backdropCanvas = document.getElementById('orbitalBackdrop');
+  orbit3DCanvasEl = document.getElementById('orbit3DCanvas');
 
-  /* 第二幕元素 */
   backBtn = document.getElementById('backBtn');
   orbitalEl = document.getElementById('orbitalTimeline');
-  satelliteEl = document.getElementById('satellite');
-  spineGroupEl = document.getElementById('navArcSpineGroup');
-  arcHudValueEl = document.getElementById('arcHudValue');
-  polarisAnchorEl = document.querySelector('.polaris-anchor');
-
-  /* 3D 空间装置的两层 */
-  navArcLayerEl = document.getElementById('navArcLayer');
-  arcCameraEl = document.getElementById('arcCamera');
-
-  nodeEls.length = 0;
-  document.querySelectorAll('.nav-node').forEach((el) => nodeEls.push(el));
+  sceneMeterCurrentEl = document.getElementById('sceneMeterCurrent');
 
   panelEls.length = 0;
   document.querySelectorAll('.nav-panel').forEach((el) => panelEls.push(el));
 
-  routeLength = routePath.getTotalLength();
-  placeNodes();
-  buildSpineSegments();
+  navNodeEls = Array.from(document.querySelectorAll('.spatial-nav-node'));
+  syncScene(0);
 
-  if (!canvas || typeof canvas.getContext !== 'function') {
+  try {
+    ctx = canvas?.getContext('2d', { alpha: false });
+    backdropCtx = backdropCanvas?.getContext('2d', { alpha: false });
+  } catch (_) { ctx = backdropCtx = null; }
+  if (!ctx || !backdropCtx) {
     document.body.classList.add('no-canvas');
-    if (button) button.classList.add('show');
-    return;
-  }
-
-  ctx = canvas.getContext('2d', { alpha: false });
-  if (!ctx) {
-    document.body.classList.add('no-canvas');
-    if (button) button.classList.add('show');
-    return;
+    ctx = backdropCtx = null;
   }
 
   state.quality = detectQualityLevel();
@@ -1720,35 +1550,23 @@ function init() {
     : null;
   state.reduced = !!(mqlReduce && mqlReduce.matches);
 
-  buildSprites();
-  resize();
-
-  /* 初始化相机姿态（即使还没进入第二幕，也让 JS 掌握相机） */
-  applyCamera(0);
-
+  document.documentElement.style.setProperty('--scene-duration', CFG.transitionDuration + 'ms');
+  document.documentElement.style.setProperty('--return-duration', CFG.returnDuration + 'ms');
+  if (ctx) {
+    buildSprites();
+    resize();
+  }
   window.addEventListener('resize', onResize, { passive: true });
-
-  if (state.reduced) {
+  window.addEventListener('pointermove', onPointerMove, { passive: true });
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', onUnload);
+  window.addEventListener('pageshow', onPageShow);
+  mqlReduce?.addEventListener('change', onReducedChange);
+  state.t0 = performance.now();
+  if (state.reduced || !ctx) {
     renderStatic();
     showButton();
-  } else {
-    if ('onpointermove' in window) {
-      window.addEventListener('pointermove', onPointerMove, { passive: true });
-    } else {
-      window.addEventListener('touchmove', onTouchMove, { passive: true });
-      window.addEventListener('mousemove', onPointerMove, { passive: true });
-    }
-
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onUnload);
-
-    if (mqlReduce && mqlReduce.addEventListener) {
-      mqlReduce.addEventListener('change', onReducedChange);
-    }
-
-    state.t0 = performance.now();
-    startLoop();
-  }
+  } else startLoop();
 
   if (button) {
     button.addEventListener('click', startTransition);
@@ -1766,6 +1584,7 @@ function init() {
 
   if (orbitalEl) {
     orbitalEl.addEventListener('scroll', onOrbitalScroll, { passive: true });
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(type => orbitalEl.addEventListener(type, onOrbitalInput, { passive: true }));
   }
 
   bound = true;

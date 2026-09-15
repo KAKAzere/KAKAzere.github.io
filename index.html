@@ -16,6 +16,7 @@
 <body>
 
   <canvas id="spaceCanvas" aria-hidden="true"></canvas>
+  <canvas id="orbitalBackdrop" aria-hidden="true"></canvas>
 
   <header class="header" id="header">
     <div class="brand">
@@ -48,114 +49,47 @@
     <span>AZIMUTH 000.00°</span>
   </div>
 
-  <section class="orbital-timeline" id="orbitalTimeline" aria-hidden="true">
-    <div class="orbital-scroll-space">
-      <div class="orbital-sticky">
+  <section class="orbital-timeline spatial-timeline" id="orbitalTimeline" aria-hidden="true" inert>
+    <div class="orbital-scroll-space spatial-scroll-space">
+      <div class="orbital-sticky spatial-sticky">
 
-        <!-- 北极星：远处的导航锚点 -->
-        <div class="polaris-anchor" aria-hidden="true">
-          <div class="polaris-halo"></div>
-          <div class="polaris-core"></div>
+        <!-- v10 Free Cinematic Stage: the 3D world now fills the whole sticky area. -->
+        <div class="spatial-stage" aria-hidden="true">
+          <canvas class="orbit-3d-canvas" id="orbit3DCanvas"></canvas>
+          <div class="spatial-vignette"></div>
         </div>
 
-        <!-- 左侧弧形导航脊柱：整个 3D 装置的骨架 -->
-        <div class="nav-arc-layer" id="navArcLayer">
-          <div class="arc-camera" id="arcCamera">
-            <svg
-              class="nav-arc-svg"
-              id="navArcSvg"
-              viewBox="0 0 120 1400"
-              preserveAspectRatio="xMidYMid meet"
-              aria-hidden="true"
-            >
-              <defs>
-                <radialGradient id="satGlow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.85" />
-                  <stop offset="14%"  stop-color="#E0ECFF" stop-opacity="0.42" />
-                  <stop offset="42%"  stop-color="#7DA8FF" stop-opacity="0.10" />
-                  <stop offset="100%" stop-color="#7DA8FF" stop-opacity="0" />
-                </radialGradient>
-              </defs>
-
-              <!-- 底弧（发丝级参考线） -->
-              <path
-                class="nav-arc-base"
-                id="navArcBase"
-                d="M 20 -40 C 134 340, 134 1060, 20 1440"
-                fill="none"
-              />
-
-              <!-- 弧线脊柱：动态分段 -->
-              <g class="nav-arc-spine-group" id="navArcSpineGroup"></g>
-
-              <!-- 5 个航点圆环 -->
-              <g class="nav-node" data-node="0">
-                <circle class="nav-node-ring" r="10" />
-                <circle class="nav-node-core" r="2" />
-              </g>
-              <g class="nav-node" data-node="1">
-                <circle class="nav-node-ring" r="10" />
-                <circle class="nav-node-core" r="2" />
-              </g>
-              <g class="nav-node" data-node="2">
-                <circle class="nav-node-ring" r="10" />
-                <circle class="nav-node-core" r="2" />
-              </g>
-              <g class="nav-node" data-node="3">
-                <circle class="nav-node-ring" r="10" />
-                <circle class="nav-node-core" r="2" />
-              </g>
-              <g class="nav-node" data-node="4">
-                <circle class="nav-node-ring" r="10" />
-                <circle class="nav-node-core" r="2" />
-              </g>
-
-              <!-- 卫星 -->
-              <g class="satellite" id="satellite">
-                <circle class="sat-glow" r="34" fill="url(#satGlow)" />
-                <circle class="sat-core" r="2.6" fill="#FFFFFF" />
-              </g>
-            </svg>
-          </div>
-        </div>
-
-        <!-- 位置读数（HUD） -->
-        <div class="arc-hud" aria-hidden="true">
-          <span class="arc-hud-label">ARC-NAV</span>
-          <span class="arc-hud-value" id="arcHudValue">01 / 05</span>
-        </div>
-
-        <!-- 右侧内容区 -->
-        <div class="nav-content">
-          <article class="nav-panel" data-node="0">
+        <!-- 右侧 60% 是 Content Stage。现在放文字，未来可直接扩展图片 / 视频。 -->
+        <div class="nav-content content-stage" id="contentStage">
+          <article class="nav-panel is-active" data-node="0" data-scene="launch" aria-hidden="false">
             <span class="panel-label">01 / 05</span>
             <h2 class="panel-title">Launch</h2>
             <p class="panel-line">The moment of ignition.</p>
             <p class="panel-sub">启航</p>
           </article>
 
-          <article class="nav-panel" data-node="1">
+          <article class="nav-panel" data-node="1" data-scene="course" aria-hidden="true" inert>
             <span class="panel-label">02 / 05</span>
             <h2 class="panel-title">Course</h2>
             <p class="panel-line">A direction chosen deliberately.</p>
             <p class="panel-sub">定航</p>
           </article>
 
-          <article class="nav-panel" data-node="2">
+          <article class="nav-panel" data-node="2" data-scene="orbit" aria-hidden="true" inert>
             <span class="panel-label">03 / 05</span>
             <h2 class="panel-title">Orbit</h2>
             <p class="panel-line">Sustained motion around a center.</p>
             <p class="panel-sub">入轨</p>
           </article>
 
-          <article class="nav-panel" data-node="3">
+          <article class="nav-panel" data-node="3" data-scene="ascent" aria-hidden="true" inert>
             <span class="panel-label">04 / 05</span>
             <h2 class="panel-title">Ascent</h2>
             <p class="panel-line">The slow climb toward altitude.</p>
             <p class="panel-sub">上升</p>
           </article>
 
-          <article class="nav-panel" data-node="4">
+          <article class="nav-panel" data-node="4" data-scene="polaris" aria-hidden="true" inert>
             <span class="panel-label">05 / 05</span>
             <h2 class="panel-title">Polaris</h2>
             <p class="panel-line">The fixed point everything returns to.</p>
@@ -163,16 +97,30 @@
           </article>
         </div>
 
+        <!-- v10 Fixed Left Navigator: navigation is fixed, never moves with the camera. -->
+        <nav class="spatial-nav" aria-hidden="true">
+          <span class="spatial-nav-rail" aria-hidden="true"></span>
+          <span class="spatial-nav-node is-current" data-index="0">01</span>
+          <span class="spatial-nav-node" data-index="1">02</span>
+          <span class="spatial-nav-node" data-index="2">03</span>
+          <span class="spatial-nav-node" data-index="3">04</span>
+          <span class="spatial-nav-node" data-index="4">05</span>
+        </nav>
+
+        <div class="scene-meter" aria-hidden="true">
+          <span class="scene-meter-current" id="sceneMeterCurrent">01</span>
+          <span class="scene-meter-line"></span>
+          <span class="scene-meter-total">05</span>
+        </div>
+
         <button class="back-btn" id="backBtn" type="button">
           <span aria-hidden="true">←</span>
-          <span>Exit Orbit</span>
+          <span>Exit Space</span>
         </button>
 
       </div>
     </div>
   </section>
-
-  <div class="transition-overlay" id="transitionOverlay" aria-hidden="true"></div>
 
   <script type="module" src="script.js"></script>
 
